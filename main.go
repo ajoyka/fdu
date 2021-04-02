@@ -1,37 +1,23 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/ajoyka/fdu/fastdu"
-	"github.com/h2non/filetype"
-
-	"github.com/h2non/filetype/types"
 )
 
 const (
 	_outputDateFile = "date-info.json"
 	_outputFile     = "file-info.json"
 )
-
-// dirCount is used to store byte totals for all files in specified dir
-type dirCount struct {
-	mu   sync.Mutex
-	size map[string]int64
-	meta map[string]*fastdu.Meta // file name (not absolute path) -> meta data map
-}
 
 type fileCount struct {
 	mu     sync.Mutex
@@ -44,9 +30,6 @@ var (
 	// fileSizes is used for communicating file size of leaf nodes for incrementing
 	// fileCount
 	fileSizes = make(chan int64)
-
-	// first 261 bytes is sufficient to identify file type
-	fileBuf = make([]byte, 261)
 
 	wg           sync.WaitGroup
 	topFiles     = flag.Int("t", 10, "number of top files/directories to display")
@@ -63,8 +46,7 @@ func main() {
 	fastdu.SortedKeys(nil)
 	sema = make(chan struct{}, *numOpenFiles)
 	fmt.Println("concurrency factor", cap(sema), *numOpenFiles)
-	dirCount := &dirCount{size: make(map[string]int64),
-		meta: make(map[string]*fastdu.Meta)}
+	dirCount := fastdu.NewDirCount()
 	fileCount := &fileCount{}
 
 	roots := flag.Args()
@@ -102,11 +84,11 @@ func main() {
 	wg.Wait()
 	close(fileSizes)
 
-	printFiles(dirCount)
+	dirCount.PrintFiles(*topFiles, *summary)
 	files, nbytes = fileCount.Get()
 	fmt.Printf("%d files, %.1fGB\n", files, float64(nbytes)/1e9)
-	printMeta(dirCount)
-	printSortedByDateMeta(dirCount)
+	dirCount.WriteMeta(_outputFile)
+	dirCount.WriteMetaSortedByDate(_outputDateFile)
 
 }
 
@@ -130,18 +112,7 @@ func createBackup(file string) {
 	}
 }
 
-// getTop returns aggregated totals for the top level
-// directories
-func (d *dirCount) getTop() map[string]int64 {
-	res := make(map[string]int64)
-	for key, val := range d.size {
-		top := strings.Split(key, "/")
-		res[top[0]] += val
-	}
-	return res
-}
-
-func walkDir(dir string, dirCount *dirCount, fileSizes chan<- int64) {
+func walkDir(dir string, dirCount *fastdu.DirCount, fileSizes chan<- int64) {
 	defer wg.Done()
 
 	// handle case when fastdu is invoked including files as args like so: fastdu *
@@ -167,56 +138,6 @@ func walkDir(dir string, dirCount *dirCount, fileSizes chan<- int64) {
 			fileSizes <- entry.Size()
 		}
 	}
-}
-
-func getFileType(file string) types.Type {
-	fd, _ := os.Open(file)
-	defer fd.Close()
-	fd.Read(fileBuf)
-	// b, _ := ioutil.ReadFile(file)
-	kind, _ := filetype.Match(fileBuf)
-	return kind
-}
-
-// AddFile can accept a path to dir or file as first argument
-func (d *dirCount) AddFile(file string, fInfo os.FileInfo) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	if !fInfo.IsDir() { // if leaf node
-		file = filepath.Join(file, fInfo.Name())
-	}
-
-	fileType := getFileType(file)
-	switch fileType.MIME.Type {
-	case "image", "audio", "video":
-		// continue
-	default:
-		return
-	}
-
-	base := filepath.Base(file)
-	var meta *fastdu.Meta
-	var ok bool
-
-	if meta, ok = d.meta[base]; !ok {
-		meta = &fastdu.Meta{
-			base,
-			fInfo.Size(),
-			fInfo.ModTime(),
-			fileType,
-			make([]string, 0),
-		}
-		d.meta[base] = meta
-	}
-
-	meta.Dups = append(meta.Dups, file)
-}
-
-func (d *dirCount) Inc(path string, size int64) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.size[path] += size
 }
 
 func (f *fileCount) Inc(size int64) {
@@ -250,98 +171,4 @@ func dirents(dir string) []os.FileInfo {
 		return nil
 	}
 	return info
-}
-
-func printMeta(dirCount *dirCount) {
-	dirCount.mu.Lock()
-	defer dirCount.mu.Unlock()
-
-	b, err := json.MarshalIndent(dirCount.meta, "  ", "  ")
-	if err != nil {
-		fmt.Println("error:", err)
-	}
-
-	f, err := os.Create(_outputFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-	f.Write(b)
-
-	fmt.Println("printing duplicate entries (if any)")
-	for n, m := range dirCount.meta {
-		if len(m.Dups) > 1 {
-			fmt.Printf("%s dups: %v %+v\n", n, m.Dups, m.Type)
-		}
-	}
-}
-
-func printSortedByDateMeta(dirCount *dirCount) {
-	dirCount.mu.Lock()
-	defer dirCount.mu.Unlock()
-
-	m := make(fastdu.SortedMetaByDate, 0)
-	for _, v := range dirCount.meta {
-		m = append(m, v)
-	}
-
-	sort.Sort(fastdu.SortedMetaByDate(m))
-	b, err := json.MarshalIndent(m, "  ", "  ")
-	if err != nil {
-		fmt.Println("error:", err)
-	}
-
-	f, err := os.Create(_outputDateFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-	f.Write(b)
-
-}
-
-func printFiles(dirCount *dirCount) {
-	dirCount.mu.Lock()
-	defer dirCount.mu.Unlock()
-	fmt.Println("size len:", len(dirCount.size))
-
-	sumKeys := dirCount.getTop()
-
-	var keys []string
-	var dc map[string]int64
-
-	if *summary {
-		keys = fastdu.SortedKeys(sumKeys)
-		dc = sumKeys
-	} else {
-		keys = fastdu.SortedKeys(dirCount.size)
-		dc = dirCount.size
-	}
-
-	if *topFiles > len(keys) || *topFiles == -1 {
-		fmt.Printf("Printing top available %d\n ", len(keys))
-	} else {
-		keys = keys[:*topFiles]
-		fmt.Printf("Printing top %d dirs/files\n", *topFiles)
-	}
-
-	for _, key := range keys {
-		size := float64(dc[key])
-		sizeGB := size / 1e9
-		sizeMB := size / 1e6
-		sizeKB := size / 1e3
-		var units string
-
-		switch {
-		case sizeGB > 0.09:
-			size = sizeGB
-			units = "GB"
-		case sizeMB > 0.09:
-			size = sizeMB
-			units = "MB"
-		default:
-			size = sizeKB
-			units = "KB"
-
-		}
-		fmt.Printf("%.1f%s, %s\n", size, units, key)
-	}
 }

@@ -2,19 +2,7 @@ package fastdu
 
 import (
 	"sort"
-	"time"
-
-	"github.com/h2non/filetype/types"
 )
-
-// Meta stores metadata about the file such as os.stat info, filetype info
-type Meta struct {
-	Name    string // base file name
-	Size    int64
-	Modtime time.Time
-	types.Type
-	Dups []string // potential list of duplicates
-}
 
 // implement sort of map which contains files and sizes
 
