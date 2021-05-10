@@ -15,6 +15,10 @@ import (
 	"github.com/h2non/filetype/types"
 )
 
+const (
+	dupFile = "duplicates.json"
+)
+
 // DUtil is an interface to describe utilities that are used
 // for directory traversal and collect meta data
 type DUtil interface {
@@ -26,9 +30,10 @@ type DUtil interface {
 
 // DirCount is used to store byte totals for all files in specified dir
 type DirCount struct {
-	mu   sync.Mutex
-	size map[string]int64 // store cumulative totals of file sizes by dir hierarchy
-	meta map[string]*Meta // file name (not absolute path) -> meta data map
+	mu    sync.Mutex
+	size  map[string]int64 // store cumulative totals of file sizes by dir hierarchy
+	meta  map[string]*Meta // file name (not absolute path) -> meta data map
+	dList []duplicates     // duplicate list for current search
 }
 
 // Meta stores metadata about the file such as os.stat info, filetype info
@@ -38,6 +43,11 @@ type Meta struct {
 	Modtime time.Time
 	types.Type
 	Dups []string // potential list of duplicates
+}
+
+type duplicates struct {
+	types.Type
+	Dups []string
 }
 
 var (
@@ -50,7 +60,9 @@ var (
 // implements DUtil
 func NewDirCount() *DirCount {
 	return &DirCount{size: make(map[string]int64),
-		meta: make(map[string]*Meta)}
+		meta:  make(map[string]*Meta),
+		dList: make([]duplicates, 0), // 0 cap slice since duplciates may not exist
+	}
 }
 
 // WriteMeta is used to write meta data to specified file
@@ -58,7 +70,23 @@ func (d *DirCount) WriteMeta(file string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	b, err := json.MarshalIndent(d.meta, "  ", "  ")
+	writeJson(d.meta, file)
+	// create duplicate files info if any exist
+	for _, m := range d.meta {
+		if len(m.Dups) > 1 {
+			d.dList = append(d.dList,
+				duplicates{m.Type, m.Dups})
+		}
+	}
+
+	writeJson(d.dList, dupFile)
+}
+
+// write jsone data to specified file
+func writeJson(d interface{}, file string) {
+
+	fmt.Printf("Creating json file %s\n", file)
+	b, err := json.MarshalIndent(d, "  ", "  ")
 	if err != nil {
 		fmt.Println("error:", err)
 	}
@@ -68,13 +96,13 @@ func (d *DirCount) WriteMeta(file string) {
 		log.Fatal(err)
 	}
 	f.Write(b)
+}
 
-	fmt.Println("printing duplicate entries (if any)")
-	for n, m := range d.meta {
-		if len(m.Dups) > 1 {
-			fmt.Printf("%s dups: %v %+v\n", n, m.Dups, m.Type)
-		}
-	}
+// create json file with list of duplicates
+func (d *DirCount) writeDups() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 }
 
 // GetTop returns aggregated totals for the top level
