@@ -30,6 +30,13 @@ func (s SortedMetaByDate) Len() int           { return len(s) }
 func (s SortedMetaByDate) Less(i, j int) bool { return s[i].Modtime.Before(s[j].Modtime) }
 func (s SortedMetaByDate) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
+// SortedFileBySize sorts files by size held in metadata
+type SortedFileBySize []*Meta
+
+func (s SortedFileBySize) Len() int           { return len(s) }
+func (s SortedFileBySize) Less(i, j int) bool { return s[i].Size < s[j].Size }
+func (s SortedFileBySize) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
 // SortedKeys takes a dictionary and returns a sorted slice of keys
 func SortedKeys(m map[string]int64) []string {
 	sm := &sortedMap{}

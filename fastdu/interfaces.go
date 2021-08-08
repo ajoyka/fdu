@@ -25,6 +25,7 @@ type DUtil interface {
 	Inc(path string, size int64)       // increment totals per dir
 	WriteMeta(file string)             // write Meta data in json format
 	WriteMetaSortedByDate(file string) // write meta data sorted by date
+	WriteMetaSortedBySize(file string) // write meta data sorted by file size
 
 }
 
@@ -189,7 +190,38 @@ func (d *DirCount) WriteMetaSortedByDate(file string) {
 	}
 	fmt.Printf("Writing meta data json file %s\n", file)
 	f.Write(b)
+	f.Close()
 
+}
+
+// WriteMetaSortedBySize writes meta data sorted by file size
+func (d *DirCount) WriteMetaSortedBySize(file string) {
+	d.mu.Lock()
+	d.mu.Unlock()
+
+	m := make(SortedFileBySize, 0)
+	for _, v := range d.meta {
+		m = append(m, v)
+	}
+
+	sort.Sort(SortedFileBySize(m))
+	writeMetaData(file, m)
+}
+
+// writeMetaData writes data to file
+func writeMetaData(file string, data interface{}) {
+	m, err := json.MarshalIndent(data, " ", " ")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	f, err := os.Create(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Writing size sorted json file %s\n", file)
+	f.Write(m)
+	f.Close()
 }
 
 // PrintFiles prints top files disk usage similar to du

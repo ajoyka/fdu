@@ -17,6 +17,7 @@ import (
 const (
 	_outputDateFile = "date-info.json"
 	_outputFile     = "file-info.json"
+	_outputSizeFile = "size-info.json"
 )
 
 type fileCount struct {
@@ -89,6 +90,7 @@ func main() {
 	fmt.Printf("%d files, %.1fGB\n", files, float64(nbytes)/1e9)
 	dirCount.WriteMeta(_outputFile)
 	dirCount.WriteMetaSortedByDate(_outputDateFile)
+	dirCount.WriteMetaSortedBySize(_outputSizeFile)
 
 }
 
