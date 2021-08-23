@@ -43,7 +43,7 @@ func SortedKeys(m map[string]int64) []string {
 	sm.m = m
 
 	// collect all keys that will eventually be sorted by value in m
-	for key, _ := range m {
+	for key := range m {
 		//fmt.Println("key", key)
 		sm.keys = append(sm.keys, key)
 	}

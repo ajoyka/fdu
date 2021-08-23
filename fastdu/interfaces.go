@@ -99,13 +99,6 @@ func writeJson(d interface{}, file string) {
 	f.Write(b)
 }
 
-// create json file with list of duplicates
-func (d *DirCount) writeDups() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-}
-
 // GetTop returns aggregated totals for the top level
 // directories
 func (d *DirCount) GetTop() map[string]int64 {
@@ -135,6 +128,10 @@ func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
 		file = filepath.Join(file, fInfo.Name())
 	}
 
+	if fInfo.Size() == 0 {
+		return
+	}
+
 	fileType := getFileType(file)
 	switch fileType.MIME.Type {
 	case "image", "audio", "video":
@@ -147,7 +144,8 @@ func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
 	var meta *Meta
 	var ok bool
 
-	if meta, ok = d.meta[base]; !ok {
+	meta, ok = d.meta[base]
+	if !ok {
 		meta = &Meta{
 			base,
 			fInfo.Size(),
@@ -155,8 +153,11 @@ func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
 			fileType,
 			make([]string, 0),
 		}
-		d.meta[base] = meta
+		if fInfo.Size() == 0 {
+			fmt.Printf("Error storing empty file %s\n", base)
+		}
 	}
+	d.meta[base] = meta
 
 	meta.Dups = append(meta.Dups, file)
 }
@@ -197,7 +198,7 @@ func (d *DirCount) WriteMetaSortedByDate(file string) {
 // WriteMetaSortedBySize writes meta data sorted by file size
 func (d *DirCount) WriteMetaSortedBySize(file string) {
 	d.mu.Lock()
-	d.mu.Unlock()
+	defer d.mu.Unlock()
 
 	m := make(SortedFileBySize, 0)
 	for _, v := range d.meta {
