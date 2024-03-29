@@ -33,7 +33,7 @@ type DUtil interface {
 type DirCount struct {
 	mu    sync.Mutex
 	size  map[string]int64 // store cumulative totals of file sizes by dir hierarchy
-	meta  map[string]*Meta // file name (not absolute path) -> meta data map
+	Meta  map[string]*Meta // file name (not absolute path) -> meta data map
 	dList []duplicates     // duplicate list for current search
 }
 
@@ -61,7 +61,7 @@ var (
 // implements DUtil
 func NewDirCount() *DirCount {
 	return &DirCount{size: make(map[string]int64),
-		meta:  make(map[string]*Meta),
+		Meta:  make(map[string]*Meta),
 		dList: make([]duplicates, 0), // 0 cap slice since duplciates may not exist
 	}
 }
@@ -71,9 +71,9 @@ func (d *DirCount) WriteMeta(file string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	writeJson(d.meta, file)
+	writeJson(d.Meta, file)
 	// create duplicate files info if any exist
-	for _, m := range d.meta {
+	for _, m := range d.Meta {
 		if len(m.Dups) > 1 {
 			d.dList = append(d.dList,
 				duplicates{m.Type, m.Dups})
@@ -144,7 +144,7 @@ func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
 	var meta *Meta
 	var ok bool
 
-	meta, ok = d.meta[base]
+	meta, ok = d.Meta[base]
 	if !ok {
 		meta = &Meta{
 			base,
@@ -157,7 +157,7 @@ func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
 			fmt.Printf("Error storing empty file %s\n", base)
 		}
 	}
-	d.meta[base] = meta
+	d.Meta[base] = meta
 
 	meta.Dups = append(meta.Dups, file)
 }
@@ -175,7 +175,7 @@ func (d *DirCount) WriteMetaSortedByDate(file string) {
 	defer d.mu.Unlock()
 
 	m := make(SortedMetaByDate, 0)
-	for _, v := range d.meta {
+	for _, v := range d.Meta {
 		m = append(m, v)
 	}
 
@@ -201,7 +201,7 @@ func (d *DirCount) WriteMetaSortedBySize(file string) {
 	defer d.mu.Unlock()
 
 	m := make(SortedFileBySize, 0)
-	for _, v := range d.meta {
+	for _, v := range d.Meta {
 		m = append(m, v)
 	}
 

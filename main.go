@@ -4,13 +4,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/ajoyka/fdu/db"
 	"github.com/ajoyka/fdu/fastdu"
 )
 
@@ -84,11 +84,18 @@ func main() {
 
 	wg.Wait()
 	close(fileSizes)
+	db, err := db.New()
+	if err != nil {
+		fmt.Print(err)
+		os.Exit(1)
+	}
+	// defer db.Close()
 
 	dirCount.PrintFiles(*topFiles, *summary)
 	files, nbytes = fileCount.Get()
 	fmt.Printf("%d files, %.1fGB\n", files, float64(nbytes)/1e9)
 	dirCount.WriteMeta(_outputFile)
+	db.WriteMeta(dirCount.Meta)
 	dirCount.WriteMetaSortedByDate(_outputDateFile)
 	dirCount.WriteMetaSortedBySize(_outputSizeFile)
 
@@ -103,12 +110,12 @@ func createBackup(file string) {
 	var r []byte
 	var err error
 
-	if r, err = ioutil.ReadFile(file); err != nil {
+	if r, err = os.ReadFile(file); err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	err = ioutil.WriteFile(file+".bak", r, 0644)
+	err = os.WriteFile(file+".bak", r, 0644)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -135,9 +142,14 @@ func walkDir(dir string, dirCount *fastdu.DirCount, fileSizes chan<- int64) {
 			wg.Add(1)
 			go walkDir(filepath.Join(dir, entry.Name()), dirCount, fileSizes)
 		} else {
-			dirCount.Inc(dir, entry.Size())
-			dirCount.AddFile(dir, entry)
-			fileSizes <- entry.Size()
+			info, err := entry.Info()
+			if err != nil {
+				fmt.Printf("Error getting fileinfo %s: %v\n", entry.Name(), err)
+				continue
+			}
+			dirCount.Inc(dir, info.Size())
+			dirCount.AddFile(dir, info)
+			fileSizes <- info.Size()
 		}
 	}
 }
@@ -157,13 +169,13 @@ func (f *fileCount) Get() (int64, int64) {
 	return f.files, f.nbytes
 }
 
-func dirents(dir string) []os.FileInfo {
+func dirents(dir string) []os.DirEntry {
 	sema <- struct{}{} // acquire token
 	defer func() {
 		<-sema // release token
 	}()
 
-	info, err := ioutil.ReadDir(dir)
+	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, syscall.EMFILE) {
 			fmt.Printf("\n**Error: %s\nReduce concurrency and retry\n", err)
@@ -172,5 +184,5 @@ func dirents(dir string) []os.FileInfo {
 		fmt.Printf("%s, %v\n", dir, err)
 		return nil
 	}
-	return info
+	return dirEntries
 }
