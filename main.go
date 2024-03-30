@@ -59,6 +59,7 @@ func main() {
 
 	var nbytes, files int64
 
+	fmt.Println()
 	go func() {
 	loop:
 		for {
@@ -71,7 +72,7 @@ func main() {
 
 			case <-tick:
 				files, nbytes = fileCount.Get()
-				fmt.Printf("\n%d files, %.1fGB\n", files, float64(nbytes)/1e9)
+				fmt.Printf("%d files, %.1fGB\n", files, float64(nbytes)/1e9)
 			}
 		}
 

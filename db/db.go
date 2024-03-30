@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 )
 
 const (
+	sqliteDB    = "media.db"
 	createTable = `
 CREATE TABLE IF NOT EXISTS media (
 	name TEXT PRIMARY KEY,
@@ -39,7 +41,10 @@ type Db struct {
 
 // New creates a new db and tables associated with it if they don't exist
 func New() (DB, error) {
-	db, err := sql.Open("sqlite3", "media.db")
+	// set data source name
+	// Check link for avoiding db lock errors: https://github.com/mattn/go-sqlite3?tab=readme-ov-file#faq
+	dsn := fmt.Sprintf("file:%s?cache=shared", sqliteDB)
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -59,13 +64,14 @@ func New() (DB, error) {
 
 func (d *Db) WriteMeta(meta map[string]*fastdu.Meta) {
 	var dupRows atomic.Uint64
+	var newRows atomic.Uint64
 
 	type job struct {
 		file string
 		meta *fastdu.Meta
 	}
 
-	numWorkers := 10
+	numWorkers := 8
 	numJobs := len(meta)
 
 	// add all jobs to jobs channel - using channel buffering
@@ -95,20 +101,23 @@ func (d *Db) WriteMeta(meta map[string]*fastdu.Meta) {
 				result, err := stmt.Exec(job.file, m.Size, m.Modtime,
 					m.MIME.Type, m.MIME.Subtype, m.MIME.Value, m.Extension, filepath)
 				if err != nil {
-					log.Fatal(err)
+					log.Fatalf("insertion error %v\n", err)
 				}
 				rowsAffected, err := result.RowsAffected()
 				if err != nil {
-					log.Fatal(err)
+					log.Fatalf("rows affected error %v", err)
 				}
 				if rowsAffected == 0 {
 					dupRows.Add(1)
+				} else {
+					newRows.Add(1)
 				}
 			}
 		}()
 	}
 	wg.Wait()
-	log.Printf("skipped duplicate insertions count: %d", dupRows.Load())
+	log.Printf("skipped duplicate row insertions: %d", dupRows.Load())
+	log.Printf("new rows added: %d", newRows.Load())
 	log.Println("Inserted to database successfully")
 }
 
