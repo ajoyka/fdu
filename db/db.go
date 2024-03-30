@@ -3,6 +3,9 @@ package db
 import (
 	"database/sql"
 	"log"
+	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/ajoyka/fdu/fastdu"
 	_ "github.com/mattn/go-sqlite3"
@@ -11,17 +14,18 @@ import (
 const (
 	createTable = `
 CREATE TABLE IF NOT EXISTS media (
-	name TEXT,
+	name TEXT PRIMARY KEY,
 	size INTEGER,
 	datetime DATETIME,
 	mime_type TEXT,
 	mime_subtype TEXT,
 	mime_value TEXT,
-	extension TEXT
+	extension TEXT,
+	filepath TEXT
 )
 `
-	insert = `INSERT INTO media (name, size, datetime, mime_type, mime_subtype, mime_value, extension) 
- VALUES (?, ?, ?, ?, ?, ?, ?)`
+	insert = `INSERT OR IGNORE INTO media (name, size, datetime, mime_type, mime_subtype, mime_value, extension, filepath) 
+ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 )
 
 type DB interface {
@@ -40,6 +44,11 @@ func New() (DB, error) {
 		log.Fatal(err)
 	}
 
+	// ping database to verify connection
+	if err := db.Ping(); err != nil {
+		log.Fatal(err)
+	}
+
 	// create table
 	_, err = db.Exec(createTable)
 	if err != nil {
@@ -49,18 +58,57 @@ func New() (DB, error) {
 }
 
 func (d *Db) WriteMeta(meta map[string]*fastdu.Meta) {
+	var dupRows atomic.Uint64
+
+	type job struct {
+		file string
+		meta *fastdu.Meta
+	}
+
+	numWorkers := 10
+	numJobs := len(meta)
+
+	// add all jobs to jobs channel - using channel buffering
+	jobs := make(chan job, numJobs)
+	for file, m := range meta {
+		jobs <- job{file: file, meta: m}
+	}
+	close(jobs)
+
+	var wg sync.WaitGroup
+	// todo: user errGroup
+	wg.Add(numWorkers)
+
 	stmt, err := d.Prepare(insert)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer stmt.Close()
 
-	for file, m := range meta {
-		_, err = stmt.Exec(file, m.Size, m.Modtime, m.MIME.Type, m.MIME.Subtype, m.MIME.Value, m.Extension)
-		if err != nil {
-			log.Fatal(err)
-		}
+	for i := 0; i < numWorkers; i++ {
+		go func() { // spawn worker
+			defer wg.Done()
+			for job := range jobs {
+				m := job.meta
+				filepath := strings.Join(m.Dups, ",")
+				// log.Printf("processing %s", filepath)
+				result, err := stmt.Exec(job.file, m.Size, m.Modtime,
+					m.MIME.Type, m.MIME.Subtype, m.MIME.Value, m.Extension, filepath)
+				if err != nil {
+					log.Fatal(err)
+				}
+				rowsAffected, err := result.RowsAffected()
+				if err != nil {
+					log.Fatal(err)
+				}
+				if rowsAffected == 0 {
+					dupRows.Add(1)
+				}
+			}
+		}()
 	}
+	wg.Wait()
+	log.Printf("skipped duplicate insertions count: %d", dupRows.Load())
 	log.Println("Inserted to database successfully")
 }
 

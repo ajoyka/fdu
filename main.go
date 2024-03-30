@@ -37,7 +37,7 @@ var (
 	numOpenFiles = flag.Int("c", 20, "concurrency factor")
 	summary      = flag.Bool("s", false, "print summary only")
 
-	printInterval = flag.Duration("f", 0*time.Second, "print summary at frequency specified in seconds; default disabled with value 0")
+	printInterval = flag.Duration("f", 2*time.Second, "print summary at frequency specified in seconds; default disabled with value 0")
 	sema          chan struct{}
 )
 
