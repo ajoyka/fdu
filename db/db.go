@@ -72,14 +72,15 @@ func (d *Db) WriteMeta(meta map[string]*fastdu.Meta) {
 	}
 
 	numWorkers := 8
-	numJobs := len(meta)
 
-	// add all jobs to jobs channel - using channel buffering
-	jobs := make(chan job, numJobs)
-	for file, m := range meta {
-		jobs <- job{file: file, meta: m}
-	}
-	close(jobs)
+	// add all jobs to jobs channel - using unbuffered channel that many workers listen to
+	jobs := make(chan job)
+	go func() { // has to be go routine as we are using unbuffered channel
+		defer close(jobs)
+		for file, m := range meta {
+			jobs <- job{file: file, meta: m}
+		}
+	}()
 
 	var wg sync.WaitGroup
 	// todo: user errGroup
