@@ -3,16 +3,19 @@ package fastdu
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/h2non/filetype"
 	"github.com/h2non/filetype/types"
+	"github.com/rwcarlsen/goexif/exif"
 )
 
 const (
@@ -43,6 +46,7 @@ type Meta struct {
 	Size    int64
 	Modtime time.Time
 	types.Type
+	Exif exif.Exif
 	Dups []string // potential list of duplicates
 }
 
@@ -51,10 +55,20 @@ type duplicates struct {
 	Dups []string
 }
 
+type fileInfo struct {
+	isMedia bool
+	types.Type
+	exif exif.Exif
+}
+
 var (
 
 	// first 261 bytes is sufficient to identify file type
-	fileBuf = make([]byte, 261)
+	fileBuf    = make([]byte, 261)
+	exifErrors atomic.Uint64
+	videoCnt   atomic.Int64
+	audioCnt   atomic.Int64
+	imageCnt   atomic.Int64
 )
 
 // NewDirCount is a function that returns a new DirCount that
@@ -74,6 +88,7 @@ func (d *DirCount) WriteMeta(file string) {
 	writeJson(d.Meta, file)
 	// create duplicate files info if any exist
 	for _, m := range d.Meta {
+		// fmt.Println(f, *m)
 		if len(m.Dups) > 1 {
 			d.dList = append(d.dList,
 				duplicates{m.Type, m.Dups})
@@ -110,13 +125,39 @@ func (d *DirCount) GetTop() map[string]int64 {
 	return res
 }
 
-func getFileType(file string) types.Type {
+func getFileInfo(file string) (fileInfo, error) {
 	fd, _ := os.Open(file)
+	// if err != nil {
+	// 	return fileInfo{}, err
+	// }
 	defer fd.Close()
 	fd.Read(fileBuf)
-	// b, _ := ioutil.ReadFile(file)
+
 	kind, _ := filetype.Match(fileBuf)
-	return kind
+	switch kind.MIME.Type {
+	case "image":
+		imageCnt.Add(1)
+	case "audio":
+		audioCnt.Add(1)
+	case "video":
+		videoCnt.Add(1)
+	default:
+		return fileInfo{}, nil
+	}
+	if kind.MIME.Type == "video" {
+		// no exif for video files
+		return fileInfo{true, kind, exif.Exif{}}, nil
+	}
+	// reset file pointer
+	fd.Seek(0, io.SeekStart)
+	exifData, err := exif.Decode(fd)
+	if err != nil {
+		// log.Printf(">>exif error %s %v\n", file, err)
+		exifErrors.Add(1)
+		exifData = &exif.Exif{}
+		return fileInfo{true, kind, exif.Exif{}}, nil
+	}
+	return fileInfo{true, kind, *exifData}, nil
 }
 
 // AddFile can accept a path to dir or file as first argument
@@ -132,11 +173,12 @@ func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
 		return
 	}
 
-	fileType := getFileType(file)
-	switch fileType.MIME.Type {
-	case "image", "audio", "video":
-		// continue
-	default:
+	imageInfo, err := getFileInfo(file)
+	if err != nil {
+		log.Printf("getFileInfo %s error %v\n", file, err)
+		return
+	}
+	if !imageInfo.isMedia {
 		return
 	}
 
@@ -146,11 +188,14 @@ func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
 
 	meta, ok = d.Meta[base]
 	if !ok {
+		// log.Printf("modtime: %s, truncated time %s", fInfo.ModTime(), fInfo.ModTime().Format(time.RFC3339))
 		meta = &Meta{
 			base,
 			fInfo.Size(),
 			fInfo.ModTime(),
-			fileType,
+			// fInfo.ModTime().Truncate(time.Second),
+			imageInfo.Type,
+			imageInfo.exif,
 			make([]string, 0),
 		}
 		if fInfo.Size() == 0 {

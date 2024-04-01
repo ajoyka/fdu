@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -19,15 +20,18 @@ CREATE TABLE IF NOT EXISTS media (
 	name TEXT PRIMARY KEY,
 	size INTEGER,
 	datetime DATETIME,
+	exif_datetime_original TEXT,
 	mime_type TEXT,
 	mime_subtype TEXT,
 	mime_value TEXT,
 	extension TEXT,
-	filepath TEXT
+	filepath TEXT,
+	exif_json TEXT
 )
 `
-	insert = `INSERT OR IGNORE INTO media (name, size, datetime, mime_type, mime_subtype, mime_value, extension, filepath) 
- VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	insert = `INSERT OR IGNORE INTO media 
+ (name, size, datetime, exif_datetime_original, mime_type, mime_subtype, mime_value, extension, filepath, exif_json) 
+ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 )
 
 type DB interface {
@@ -37,6 +41,10 @@ type DB interface {
 
 type Db struct {
 	*sql.DB
+}
+
+type exifInfo struct {
+	DateTimeOriginal string `json:DateTimeOriginal`
 }
 
 // New creates a new db and tables associated with it if they don't exist
@@ -99,8 +107,17 @@ func (d *Db) WriteMeta(meta map[string]*fastdu.Meta) {
 				m := job.meta
 				filepath := strings.Join(m.Dups, ",")
 				// log.Printf("processing %s", filepath)
+
+				exifData, _ := m.Exif.MarshalJSON()
+				eInfo := exifInfo{}
+				err := json.Unmarshal(exifData, &eInfo)
+				if err != nil {
+					log.Printf("cannot get exif datetime for %s", job.file)
+				}
+
 				result, err := stmt.Exec(job.file, m.Size, m.Modtime,
-					m.MIME.Type, m.MIME.Subtype, m.MIME.Value, m.Extension, filepath)
+					eInfo.DateTimeOriginal,
+					m.MIME.Type, m.MIME.Subtype, m.MIME.Value, m.Extension, filepath, string(exifData))
 				if err != nil {
 					log.Fatalf("insertion error %v\n", err)
 				}
