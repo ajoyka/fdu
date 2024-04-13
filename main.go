@@ -99,6 +99,7 @@ func main() {
 	db.WriteMeta(dirCount.Meta)
 	dirCount.WriteMetaSortedByDate(_outputDateFile)
 	dirCount.WriteMetaSortedBySize(_outputSizeFile)
+	fmt.Println(dirCount.Counters())
 
 }
 

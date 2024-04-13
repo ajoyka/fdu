@@ -29,6 +29,7 @@ type DUtil interface {
 	WriteMeta(file string)             // write Meta data in json format
 	WriteMetaSortedByDate(file string) // write meta data sorted by date
 	WriteMetaSortedBySize(file string) // write meta data sorted by file size
+	Counters() Counters                // return various counters
 
 }
 
@@ -61,14 +62,17 @@ type fileInfo struct {
 	exif exif.Exif
 }
 
-var (
+type Counters struct {
+	ExifErrors atomic.Uint64
+	VideoCnt   atomic.Int64
+	AudioCnt   atomic.Int64
+	ImageCnt   atomic.Int64
+}
 
+var (
 	// first 261 bytes is sufficient to identify file type
-	fileBuf    = make([]byte, 261)
-	exifErrors atomic.Uint64
-	videoCnt   atomic.Int64
-	audioCnt   atomic.Int64
-	imageCnt   atomic.Int64
+	fileBuf = make([]byte, 261)
+	counts  Counters
 )
 
 // NewDirCount is a function that returns a new DirCount that
@@ -78,6 +82,10 @@ func NewDirCount() *DirCount {
 		Meta:  make(map[string]*Meta),
 		dList: make([]duplicates, 0), // 0 cap slice since duplciates may not exist
 	}
+}
+
+func (d *DirCount) Counters() Counters {
+	return counts
 }
 
 // WriteMeta is used to write meta data to specified file
@@ -136,11 +144,11 @@ func getFileInfo(file string) (fileInfo, error) {
 	kind, _ := filetype.Match(fileBuf)
 	switch kind.MIME.Type {
 	case "image":
-		imageCnt.Add(1)
+		counts.ImageCnt.Add(1)
 	case "audio":
-		audioCnt.Add(1)
+		counts.AudioCnt.Add(1)
 	case "video":
-		videoCnt.Add(1)
+		counts.VideoCnt.Add(1)
 	default:
 		return fileInfo{}, nil
 	}
@@ -153,7 +161,7 @@ func getFileInfo(file string) (fileInfo, error) {
 	exifData, err := exif.Decode(fd)
 	if err != nil {
 		// log.Printf(">>exif error %s %v\n", file, err)
-		exifErrors.Add(1)
+		counts.ExifErrors.Add(1)
 		exifData = &exif.Exif{}
 		return fileInfo{true, kind, exif.Exif{}}, nil
 	}
