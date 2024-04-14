@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS media (
 	name TEXT PRIMARY KEY,
 	size INTEGER,
 	datetime DATETIME,
-	exif_datetime_original TEXT,
+	exif_datetime_original DATETIME,
 	mime_type TEXT,
 	mime_subtype TEXT,
 	mime_value TEXT,
@@ -41,10 +41,6 @@ type DB interface {
 
 type Db struct {
 	*sql.DB
-}
-
-type exifInfo struct {
-	DateTimeOriginal string `json:DateTimeOriginal`
 }
 
 // New creates a new db and tables associated with it if they don't exist
@@ -108,15 +104,16 @@ func (d *Db) WriteMeta(meta map[string]*fastdu.Meta) {
 				filepath := strings.Join(m.Dups, ",")
 				// log.Printf("processing %s", filepath)
 
-				exifData, _ := m.Exif.MarshalJSON()
-				eInfo := exifInfo{}
-				err := json.Unmarshal(exifData, &eInfo)
-				if err != nil {
-					log.Printf("cannot get exif datetime for %s", job.file)
+				exifData, _ := json.Marshal(m.Exif)
+				var dateTimeOriginal sql.NullTime
+				dateTimeOriginal.Valid = false
+				if m.MIME.Type != "video" {
+					dateTimeOriginal.Valid = true
+					dateTimeOriginal.Time = m.Exif.DateTimeOriginal()
 				}
 
 				result, err := stmt.Exec(job.file, m.Size, m.Modtime,
-					eInfo.DateTimeOriginal,
+					dateTimeOriginal,
 					m.MIME.Type, m.MIME.Subtype, m.MIME.Value, m.Extension, filepath, string(exifData))
 				if err != nil {
 					log.Fatalf("insertion error %v\n", err)

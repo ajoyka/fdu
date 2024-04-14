@@ -13,9 +13,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/evanoberholster/imagemeta"
+	"github.com/evanoberholster/imagemeta/exif2"
 	"github.com/h2non/filetype"
 	"github.com/h2non/filetype/types"
-	"github.com/rwcarlsen/goexif/exif"
 )
 
 const (
@@ -47,7 +48,7 @@ type Meta struct {
 	Size    int64
 	Modtime time.Time
 	types.Type
-	Exif exif.Exif
+	Exif exif2.Exif
 	Dups []string // potential list of duplicates
 }
 
@@ -59,7 +60,7 @@ type duplicates struct {
 type fileInfo struct {
 	isMedia bool
 	types.Type
-	exif exif.Exif
+	exif exif2.Exif
 }
 
 type Counters struct {
@@ -84,8 +85,19 @@ func NewDirCount() *DirCount {
 	}
 }
 
-func (d *DirCount) Counters() Counters {
-	return counts
+func (d *DirCount) Counters() string {
+	return counts.String()
+}
+
+func (c *Counters) String() string {
+	cntStr := "\n"
+	cntStr += fmt.Sprintf("Exif Errors: %d\nVideo files: %d\nAudio file(s): %d\nImage file(s): %d\n",
+		c.ExifErrors.Load(),
+		c.VideoCnt.Load(),
+		c.AudioCnt.Load(),
+		c.ImageCnt.Load(),
+	)
+	return cntStr
 }
 
 // WriteMeta is used to write meta data to specified file
@@ -154,18 +166,18 @@ func getFileInfo(file string) (fileInfo, error) {
 	}
 	if kind.MIME.Type == "video" {
 		// no exif for video files
-		return fileInfo{true, kind, exif.Exif{}}, nil
+		return fileInfo{true, kind, exif2.Exif{}}, nil
 	}
 	// reset file pointer
 	fd.Seek(0, io.SeekStart)
-	exifData, err := exif.Decode(fd)
+	exifData, err := imagemeta.Decode(fd)
 	if err != nil {
 		// log.Printf(">>exif error %s %v\n", file, err)
 		counts.ExifErrors.Add(1)
-		exifData = &exif.Exif{}
-		return fileInfo{true, kind, exif.Exif{}}, nil
+		exifData = exif2.Exif{}
+		return fileInfo{true, kind, exifData}, nil
 	}
-	return fileInfo{true, kind, *exifData}, nil
+	return fileInfo{true, kind, exifData}, nil
 }
 
 // AddFile can accept a path to dir or file as first argument
