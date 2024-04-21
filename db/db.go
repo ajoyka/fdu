@@ -107,7 +107,7 @@ func (d *Db) WriteMeta(meta map[string]*fastdu.Meta) {
 				exifData, _ := json.Marshal(m.Exif)
 				var dateTimeOriginal sql.NullTime
 				dateTimeOriginal.Valid = false
-				if m.MIME.Type != "video" {
+				if m.MIME.Type == "image" {
 					dateTimeOriginal.Valid = true
 					dateTimeOriginal.Time = m.Exif.DateTimeOriginal()
 				}
