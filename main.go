@@ -97,6 +97,7 @@ func main() {
 	fmt.Printf("%d files, %.1fGB\n", files, float64(nbytes)/1e9)
 	dirCount.WriteMeta(_outputFile)
 	db.WriteMeta(dirCount.Meta)
+	db.WriteDuplicates(dirCount.Meta)
 	dirCount.WriteMetaSortedByDate(_outputDateFile)
 	dirCount.WriteMetaSortedBySize(_outputSizeFile)
 	fmt.Println(dirCount.Counters())
