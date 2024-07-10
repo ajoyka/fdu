@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -26,24 +25,26 @@ CREATE TABLE IF NOT EXISTS media (
 	mime_value TEXT,
 	extension TEXT,
 	count INTEGER, -- if > 1 then duplicate occurences
+	file_size_mismatch INTEGER, -- 0 -> false, 1 -> true: sqlite does not have boolean type
 	filepath TEXT,
 	exif_json TEXT
 )
 `
 	insertMedia = `INSERT OR IGNORE INTO media 
- (name, size, datetime, exif_datetime_original, mime_type, mime_subtype, mime_value, extension, count, filepath, exif_json) 
- VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+ (name, size, datetime, exif_datetime_original, mime_type, mime_subtype, mime_value, extension, count, file_size_mismatch, filepath, exif_json) 
+ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	duplicatesTable = `
 CREATE TABLE IF NOT EXISTS duplicates (
 	datetime DATETIME,
 	name TEXT,
+	size INTEGER,
 	filepath TEXT PRIMARY KEY 
 )`
 
 	insertDuplicate = `INSERT OR IGNORE INTO duplicates
-	(datetime, name, filepath)
-	VALUES (?, ?, ?) `
+	(datetime, name, size, filepath)
+	VALUES (?, ?, ?, ?)`
 )
 
 type DB interface {
@@ -124,10 +125,11 @@ func (d *DBImpl) WriteDuplicates(meta map[string]*fastdu.Meta) {
 	for i := 0; i < numWorkers; i++ {
 		go func() {
 			defer wg.Done()
+			// each worker consumes from broadcast channel of jobs
 			for job := range jobs {
 				m := job.meta
-				for _, filepath := range m.Dups {
-					result, err := stmt.Exec(m.Modtime, job.file, filepath)
+				for _, dup := range m.Dups {
+					result, err := stmt.Exec(m.Modtime, job.file, dup.Size, dup.Name)
 					if err != nil {
 						log.Fatalf("insert duplicate %v", err)
 					}
@@ -182,9 +184,8 @@ func (d *DBImpl) WriteMeta(meta map[string]*fastdu.Meta) {
 			defer wg.Done()
 			for job := range jobs {
 				m := job.meta
-				filepath := strings.Join(m.Dups, ",")
+				filepath, _ := json.Marshal(m.Dups)
 				count := len(m.Dups)
-				// log.Printf("processing %s", filepath)
 
 				exifData, _ := json.Marshal(m.Exif)
 				var dateTimeOriginal sql.NullTime
@@ -197,7 +198,7 @@ func (d *DBImpl) WriteMeta(meta map[string]*fastdu.Meta) {
 				result, err := stmt.Exec(job.file, m.Size, m.Modtime,
 					dateTimeOriginal,
 					m.MIME.Type, m.MIME.Subtype, m.MIME.Value, m.Extension,
-					count, filepath, string(exifData))
+					count, m.FileSizeMismatch, string(filepath), string(exifData))
 				if err != nil {
 					log.Fatalf("insertion error %v\n", err)
 				}

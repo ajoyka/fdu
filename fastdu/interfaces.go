@@ -34,7 +34,7 @@ type DUtil interface {
 
 }
 
-// DirCount is used to store byte totals for all files in specified dir
+// DirCount is used to store byte totals for all files in specified dir along with meta data
 type DirCount struct {
 	mu    sync.Mutex
 	size  map[string]int64 // store cumulative totals of file sizes by dir hierarchy
@@ -48,13 +48,19 @@ type Meta struct {
 	Size    int64
 	Modtime time.Time
 	types.Type
-	Exif exif2.Exif
-	Dups []string // potential list of duplicates
+	Exif             exif2.Exif
+	FileSizeMismatch bool
+	Dups             []Duplicate // potential list of duplicates
 }
 
 type duplicates struct {
 	types.Type
-	Dups []string
+	Dups []Duplicate
+}
+
+type Duplicate struct {
+	Name string
+	Size int64
 }
 
 type fileInfo struct {
@@ -64,10 +70,11 @@ type fileInfo struct {
 }
 
 type Counters struct {
-	ExifErrors atomic.Uint64
-	VideoCnt   atomic.Int64
-	AudioCnt   atomic.Int64
-	ImageCnt   atomic.Int64
+	ExifErrors          atomic.Uint64
+	VideoCnt            atomic.Int64
+	AudioCnt            atomic.Int64
+	ImageCnt            atomic.Int64
+	FileSizeMismatchCnt atomic.Int64
 }
 
 var (
@@ -91,11 +98,12 @@ func (d *DirCount) Counters() string {
 
 func (c *Counters) String() string {
 	cntStr := "\n"
-	cntStr += fmt.Sprintf("Exif Errors: %d\nVideo files: %d\nAudio file(s): %d\nImage file(s): %d\n",
+	cntStr += fmt.Sprintf("Exif Errors: %d\nVideo files: %d\nAudio file(s): %d\nImage file(s): %d\nFileSizeMismatch Count: %d\n",
 		c.ExifErrors.Load(),
 		c.VideoCnt.Load(),
 		c.AudioCnt.Load(),
 		c.ImageCnt.Load(),
+		c.FileSizeMismatchCnt.Load(),
 	)
 	return cntStr
 }
@@ -164,8 +172,8 @@ func getFileInfo(file string) (fileInfo, error) {
 	default:
 		return fileInfo{}, nil
 	}
-	if kind.MIME.Type == "video" {
-		// no exif for video files
+	if kind.MIME.Type == "video" || kind.MIME.Type == "audio" {
+		// no exif for video/audio files
 		return fileInfo{true, kind, exif2.Exif{}}, nil
 	}
 	// reset file pointer
@@ -207,7 +215,15 @@ func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
 	var ok bool
 
 	meta, ok = d.Meta[base]
-	if !ok {
+	if ok {
+		if d.Meta[base].Size != fInfo.Size() {
+			// fmt.Printf("duplicate file size mismatch, existing file: %s, current file:%s, existing: %d, current: %d\n",
+			// 	d.Meta[base].Dups[0], file, d.Meta[base].Size, fInfo.Size())
+			counts.FileSizeMismatchCnt.Add(1)
+			d.Meta[base].FileSizeMismatch = true
+			d.Meta[base].Dups = append(d.Meta[base].Dups, Duplicate{file, fInfo.Size()})
+		}
+	} else {
 		// log.Printf("modtime: %s, truncated time %s", fInfo.ModTime(), fInfo.ModTime().Format(time.RFC3339))
 		meta = &Meta{
 			base,
@@ -216,7 +232,8 @@ func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
 			// fInfo.ModTime().Truncate(time.Second),
 			imageInfo.Type,
 			imageInfo.exif,
-			make([]string, 0),
+			false, // FileSizeMismatch
+			[]Duplicate{{file, fInfo.Size()}},
 		}
 		if fInfo.Size() == 0 {
 			fmt.Printf("Error storing empty file %s\n", base)
@@ -224,7 +241,7 @@ func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
 	}
 	d.Meta[base] = meta
 
-	meta.Dups = append(meta.Dups, file)
+	meta.Dups = append(meta.Dups, Duplicate{file, fInfo.Size()})
 }
 
 // Inc increases the cumulative file size count by directory
