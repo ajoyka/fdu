@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
+	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -26,13 +30,14 @@ CREATE TABLE IF NOT EXISTS media (
 	extension TEXT,
 	count INTEGER, -- if > 1 then duplicate occurences
 	file_size_mismatch INTEGER, -- 0 -> false, 1 -> true: sqlite does not have boolean type
+	common_path TEXT, -- common suffix if duplicate paths exist
 	filepath TEXT,
 	exif_json TEXT
 )
 `
 	insertMedia = `INSERT OR IGNORE INTO media 
- (name, size, datetime, exif_datetime_original, mime_type, mime_subtype, mime_value, extension, count, file_size_mismatch, filepath, exif_json) 
- VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+ (name, size, datetime, exif_datetime_original, mime_type, mime_subtype, mime_value, extension, count, file_size_mismatch, common_path, filepath, exif_json) 
+ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	duplicatesTable = `
 CREATE TABLE IF NOT EXISTS duplicates (
@@ -180,7 +185,7 @@ func (d *DBImpl) WriteMeta(meta map[string]*fastdu.Meta) {
 	defer stmt.Close()
 
 	for i := 0; i < numWorkers; i++ {
-		go func() { // spawn worker
+		go func() { // spawn worker that consumes jobs from global channel
 			defer wg.Done()
 			for job := range jobs {
 				m := job.meta
@@ -198,7 +203,10 @@ func (d *DBImpl) WriteMeta(meta map[string]*fastdu.Meta) {
 				result, err := stmt.Exec(job.file, m.Size, m.Modtime,
 					dateTimeOriginal,
 					m.MIME.Type, m.MIME.Subtype, m.MIME.Value, m.Extension,
-					count, m.FileSizeMismatch, string(filepath), string(exifData))
+					count, m.FileSizeMismatch,
+					findCommonPath(m.Dups),
+					string(filepath),
+					string(exifData))
 				if err != nil {
 					log.Fatalf("insertion error %v\n", err)
 				}
@@ -222,4 +230,42 @@ func (d *DBImpl) WriteMeta(meta map[string]*fastdu.Meta) {
 
 func (d *DBImpl) Close() {
 	d.Close()
+}
+
+// findCommonPath finds the common path suffix from the bottom to the top
+// ex: /a/b/c/x.jpg, /m/b/c/x.jpg as duplicates will return b/c/x.jpg
+// this indicates a duplicate file/folder that can be removed/ignored
+func findCommonPath(dups []fastdu.Duplicate) string {
+	if len(dups) == 1 {
+		return ""
+	}
+	dMap := map[string]int{}
+	maxPathCnt := math.MinInt32
+	maxPath := []string{}
+
+	for _, dup := range dups {
+		components := strings.Split(dup.Name, string(filepath.Separator))
+		for _, comp := range components {
+			dMap[comp] += 1
+		}
+		// we need to find max path and walk backwards subsequently to identify common suffix
+		// ex: /a/b/c/d.jpg, /a/b/c/x/d.jpg cnts for a: 2, b:2, c:2, x:1, d.jpg:2; so taking longest
+		// path will correctly identify the common suffix as d.jpg as the correct one
+
+		if len(components) > maxPathCnt {
+			maxPathCnt = len(components)
+			slices.Reverse(components)
+			maxPath = components
+		}
+	}
+	cnt := dMap[maxPath[0]] // get reversed path leaf cnt to start with
+	commonPath := []string{}
+	for _, comp := range maxPath {
+		if dMap[comp] < cnt {
+			break
+		}
+		commonPath = append(commonPath, comp)
+	}
+	slices.Reverse(commonPath)
+	return strings.Join(commonPath, string(filepath.Separator))
 }
