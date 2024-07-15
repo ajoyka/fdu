@@ -130,15 +130,16 @@ func walkDir(dir string, dirCount *fastdu.DirCount, fileSizes chan<- int64) {
 	// handle case when fastdu is invoked including files as args like so: fastdu *
 	// check if 'dir' is a file
 
-	fInfo, err := os.Stat(dir)
-	if err != nil {
-		fmt.Print(err)
-	} else if !fInfo.IsDir() { // 'dir' is a file
-		dirCount.Inc(dir, fInfo.Size())
-		dirCount.AddFile(dir, fInfo)
-		fileSizes <- fInfo.Size()
-		return
-	}
+	// fInfo, err := os.Stat(dir)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// }
+	// } else if !fInfo.IsDir() { // 'dir' is a file
+	// 	dirCount.Inc(dir, fInfo.Size())
+	// 	dirCount.AddFile(dir, fInfo)
+	// 	fileSizes <- fInfo.Size()
+	// 	return
+	// }
 
 	for _, entry := range dirents(dir) {
 		if entry.IsDir() {

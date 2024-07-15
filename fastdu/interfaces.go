@@ -217,11 +217,8 @@ func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
 	meta, ok = d.Meta[base]
 	if ok {
 		if d.Meta[base].Size != fInfo.Size() {
-			// fmt.Printf("duplicate file size mismatch, existing file: %s, current file:%s, existing: %d, current: %d\n",
-			// 	d.Meta[base].Dups[0], file, d.Meta[base].Size, fInfo.Size())
 			counts.FileSizeMismatchCnt.Add(1)
 			d.Meta[base].FileSizeMismatch = true
-			d.Meta[base].Dups = append(d.Meta[base].Dups, Duplicate{file, fInfo.Size()})
 		}
 	} else {
 		// log.Printf("modtime: %s, truncated time %s", fInfo.ModTime(), fInfo.ModTime().Format(time.RFC3339))
@@ -233,15 +230,14 @@ func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
 			imageInfo.Type,
 			imageInfo.exif,
 			false, // FileSizeMismatch
-			[]Duplicate{{file, fInfo.Size()}},
+			nil,
 		}
 		if fInfo.Size() == 0 {
 			fmt.Printf("Error storing empty file %s\n", base)
 		}
+		d.Meta[base] = meta
 	}
-	d.Meta[base] = meta
-
-	meta.Dups = append(meta.Dups, Duplicate{file, fInfo.Size()})
+	d.Meta[base].Dups = append(d.Meta[base].Dups, Duplicate{file, fInfo.Size()})
 }
 
 // Inc increases the cumulative file size count by directory
