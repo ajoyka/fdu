@@ -154,10 +154,10 @@ func (d *DirCount) GetTop() map[string]int64 {
 }
 
 func getFileInfo(file string) (fileInfo, error) {
-	fd, _ := os.Open(file)
-	// if err != nil {
-	// 	return fileInfo{}, err
-	// }
+	fd, err := os.Open(file)
+	if err != nil {
+		return fileInfo{}, err
+	}
 	defer fd.Close()
 	fd.Read(fileBuf)
 
@@ -177,7 +177,10 @@ func getFileInfo(file string) (fileInfo, error) {
 		return fileInfo{true, kind, exif2.Exif{}}, nil
 	}
 	// reset file pointer
-	fd.Seek(0, io.SeekStart)
+	_, err = fd.Seek(0, io.SeekStart)
+	if err != nil {
+		return fileInfo{}, err
+	}
 	exifData, err := imagemeta.Decode(fd)
 	if err != nil {
 		// log.Printf(">>exif error %s %v\n", file, err)
@@ -190,6 +193,11 @@ func getFileInfo(file string) (fileInfo, error) {
 
 // AddFile can accept a path to dir or file as first argument
 func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Recovering from panic while processing %s, fileInfo: %v", file, fInfo)
+		}
+	}()
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
