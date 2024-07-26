@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -30,14 +29,15 @@ CREATE TABLE IF NOT EXISTS media (
 	extension TEXT,
 	count INTEGER, -- if > 1 then duplicate occurences
 	file_size_mismatch INTEGER, -- 0 -> false, 1 -> true: sqlite does not have boolean type
-	common_path TEXT, -- common suffix if duplicate paths exist
+	suffix_common_path TEXT, -- common suffix if duplicate paths exist
+	max_common_path TEXT, -- common matching paths if duplicate paths exist
 	filepath TEXT,
 	exif_json TEXT
 )
 `
 	insertMedia = `INSERT OR IGNORE INTO media 
- (name, size, datetime, exif_datetime_original, mime_type, mime_subtype, mime_value, extension, count, file_size_mismatch, common_path, filepath, exif_json) 
- VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+ (name, size, datetime, exif_datetime_original, mime_type, mime_subtype, mime_value, extension, count, file_size_mismatch, suffix_common_path, max_common_path, filepath, exif_json) 
+ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	duplicatesTable = `
 CREATE TABLE IF NOT EXISTS duplicates (
@@ -199,12 +199,13 @@ func (d *DBImpl) WriteMeta(meta map[string]*fastdu.Meta) {
 					dateTimeOriginal.Valid = true
 					dateTimeOriginal.Time = m.Exif.DateTimeOriginal()
 				}
-
+				maxSuffixPath, maxCommonPath := findCommonPath(m.Dups)
 				result, err := stmt.Exec(job.file, m.Size, m.Modtime,
 					dateTimeOriginal,
 					m.MIME.Type, m.MIME.Subtype, m.MIME.Value, m.Extension,
 					count, m.FileSizeMismatch,
-					findCommonPath(m.Dups),
+					maxSuffixPath,
+					maxCommonPath,
 					string(filepath),
 					string(exifData))
 				if err != nil {
@@ -235,18 +236,22 @@ func (d *DBImpl) Close() {
 // findCommonPath finds the common path suffix from the bottom to the top
 // ex: /a/b/c/x.jpg, /m/b/c/x.jpg as duplicates will return b/c/x.jpg
 // this indicates a duplicate file/folder that can be removed/ignored
-func findCommonPath(dups []fastdu.Duplicate) string {
+// it also returns a max possible common path
+func findCommonPath(dups []fastdu.Duplicate) (string, string) {
 	if len(dups) == 1 {
-		return ""
+		return "", ""
 	}
 	dMap := map[string]int{}
-	maxPathCnt := math.MinInt32
+	maxPathCnt := 0
 	maxPath := []string{}
-
+	maxCompPath := 0 // max count of any path component
 	for _, dup := range dups {
 		components := strings.Split(dup.Name, string(filepath.Separator))
 		for _, comp := range components {
 			dMap[comp] += 1
+			if dMap[comp] > maxCompPath {
+				maxCompPath = dMap[comp]
+			}
 		}
 		// we need to find max path and walk backwards subsequently to identify common suffix
 		// ex: /a/b/c/d.jpg, /a/b/c/x/d.jpg cnts for a: 2, b:2, c:2, x:1, d.jpg:2; so taking longest
@@ -267,5 +272,32 @@ func findCommonPath(dups []fastdu.Duplicate) string {
 		commonPath = append(commonPath, comp)
 	}
 	slices.Reverse(commonPath)
-	return strings.Join(commonPath, string(filepath.Separator))
+
+	// find max paths that are common overall; helpful to detect upper level dirs that share same path
+	// ex: /a/b/c/d/1.jpg and /a/b/c/d/Originals/1.jpg => /a/b/c/d
+	maxCommonPath := []string{}
+	if len(maxPath) > 1 {
+		// // scan and append if count == maxCompPath
+		// for _, comp := range maxPath {
+		// 	if dMap[comp] == maxCompPath {
+
+		// 	}
+		// }
+		i := 0
+		for i = 0; dMap[maxPath[i]] > dMap[maxPath[i+1]]; i++ {
+			// keep going as we are trying to find the last dip in count
+		}
+		i += 1 // end of inflection count
+
+		for _, comp := range maxPath[i:] {
+			if dMap[comp] != maxCompPath {
+				continue
+			}
+			maxCommonPath = append(maxCommonPath, comp)
+		}
+
+		slices.Reverse(maxCommonPath)
+	}
+
+	return strings.Join(commonPath, string(filepath.Separator)), strings.Join(maxCommonPath, string(filepath.Separator))
 }

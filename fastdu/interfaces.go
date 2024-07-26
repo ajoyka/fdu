@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -75,12 +76,16 @@ type Counters struct {
 	AudioCnt            atomic.Int64
 	ImageCnt            atomic.Int64
 	FileSizeMismatchCnt atomic.Int64
+	FilesSkipCnt        atomic.Int64
 }
 
 var (
 	// first 261 bytes is sufficient to identify file type
 	fileBuf = make([]byte, 261)
 	counts  Counters
+	// skip thumb nail files etc.,; use raw strings to avoid backslashes
+	skipFiles      = `/Thumbs/|@eaDir` // add other skip files after specifying '|' for 'OR'ing
+	skipFilesRegex = regexp.MustCompile(skipFiles)
 )
 
 // NewDirCount is a function that returns a new DirCount that
@@ -98,12 +103,13 @@ func (d *DirCount) Counters() string {
 
 func (c *Counters) String() string {
 	cntStr := "\n"
-	cntStr += fmt.Sprintf("Exif Errors: %d\nVideo files: %d\nAudio file(s): %d\nImage file(s): %d\nFileSizeMismatch Count: %d\n",
+	cntStr += fmt.Sprintf("Exif Errors: %d\nVideo files: %d\nAudio file(s): %d\nImage file(s): %d\nFileSizeMismatch Count: %d\nThumbFilesSkip Count:%d",
 		c.ExifErrors.Load(),
 		c.VideoCnt.Load(),
 		c.AudioCnt.Load(),
 		c.ImageCnt.Load(),
 		c.FileSizeMismatchCnt.Load(),
+		c.FilesSkipCnt.Load(),
 	)
 	return cntStr
 }
@@ -192,7 +198,8 @@ func getFileInfo(file string) (fileInfo, error) {
 }
 
 // AddFile can accept a path to dir or file as first argument
-func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
+func (d *DirCount) AddFile(dir string, fInfo os.FileInfo) {
+	var file string
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("Recovering from panic while processing %s, fileInfo: %v", file, fInfo)
@@ -201,8 +208,15 @@ func (d *DirCount) AddFile(file string, fInfo os.FileInfo) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if !fInfo.IsDir() { // if leaf node
-		file = filepath.Join(file, fInfo.Name())
+	if fInfo.IsDir() {
+		log.Printf("error: expecting file got dir: %s", file)
+		return
+	}
+
+	file = filepath.Join(dir, fInfo.Name())
+	if skipFilesRegex.MatchString(file) {
+		counts.FilesSkipCnt.Add(1)
+		return
 	}
 
 	if fInfo.Size() == 0 {
