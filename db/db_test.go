@@ -43,7 +43,26 @@ func Test_findCommonPath(t *testing.T) {
 				},
 			},
 			wantSuffix: "Flower 10.jpg",
-			wantCommon: "/Drive/foobar/c/Desktop Pictures",
+			wantCommon: "Drive/foobar/c/Desktop Pictures",
+		},
+		{
+			name: "common-path-in-middle-v2",
+			dups: []fastdu.Duplicate{
+				{
+					Name: "/x/y/z/common/My Documents/a/b/c/d/upload_transparent.gif",
+					Size: 99,
+				},
+				{
+					Name: "/x/y/m/yy/DRIVEC/Users/common/Documents/a/b/c/d/upload_transparent.gif",
+					Size: 99,
+				},
+				{
+					Name: "/x/y/m/yy/Users/common/Documents/a/b/c/d/upload_transparent.gif",
+					Size: 99,
+				},
+			},
+			wantSuffix: "a/b/c/d/upload_transparent.gif",
+			wantCommon: "common",
 		},
 		{
 			name: "no-common-path",

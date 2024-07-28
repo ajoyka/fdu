@@ -284,14 +284,17 @@ func findCommonPath(dups []fastdu.Duplicate) (string, string) {
 		// 	}
 		// }
 		i := 0
-		for i = 0; dMap[maxPath[i]] > dMap[maxPath[i+1]]; i++ {
+		for i = 0; dMap[maxPath[i]] >= dMap[maxPath[i+1]]; i++ {
 			// keep going as we are trying to find the last dip in count
 		}
 		i += 1 // end of inflection count
 
+		for ; dMap[maxPath[i]] != maxCompPath; i++ {
+			// find the next maxCompPath
+		}
 		for _, comp := range maxPath[i:] {
 			if dMap[comp] != maxCompPath {
-				continue
+				break
 			}
 			maxCommonPath = append(maxCommonPath, comp)
 		}
