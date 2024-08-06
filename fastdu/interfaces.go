@@ -84,13 +84,14 @@ var (
 	fileBuf = make([]byte, 261)
 	counts  Counters
 	// skip thumb nail files etc.,; use raw strings to avoid backslashes
-	skipFiles      = `/Thumbs/|@eaDir` // add other skip files after specifying '|' for 'OR'ing
+	skipFiles      = `/Thumbs/|@eaDir|/rep/ssd/` // add other skip files after specifying '|' for 'OR'ing
 	skipFilesRegex = regexp.MustCompile(skipFiles)
 )
 
 // NewDirCount is a function that returns a new DirCount that
 // implements DUtil
-func NewDirCount() *DirCount {
+func NewDirCount(skipPat string) *DirCount {
+	skipFilesRegex = regexp.MustCompile(skipPat)
 	return &DirCount{size: make(map[string]int64),
 		Meta:  make(map[string]*Meta),
 		dList: make([]duplicates, 0), // 0 cap slice since duplciates may not exist

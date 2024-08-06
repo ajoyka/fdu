@@ -47,6 +47,16 @@ func TestDirCount_AddFile(t *testing.T) {
 			},
 		},
 		{
+			name: "check-or-regex", // skip this file
+			args: args{
+				dir:   "../testdata/rep/ssd",
+				fname: "skip.png",
+			},
+			checker: func(got *DirCount) {
+				assert.NotContains(t, got.Meta, "skip.png")
+			},
+		},
+		{
 			name: "dont-skip-thumb", // don't skip
 			args: args{
 				dir:   "../testdata/Thumb",

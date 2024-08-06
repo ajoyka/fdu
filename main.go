@@ -36,6 +36,7 @@ var (
 	topFiles     = flag.Int("t", 10, "number of top files/directories to display")
 	numOpenFiles = flag.Int("c", 20, "concurrency factor")
 	summary      = flag.Bool("s", false, "print summary only")
+	excludePath  = flag.String("e", "", "exclude files/dirs in path using specified regex pattern\n: ex: -e '/a/b|/x/y'")
 
 	printInterval = flag.Duration("f", 5*time.Second, "print summary at frequency specified in seconds; default disabled with value 0")
 	sema          chan struct{}
@@ -47,7 +48,7 @@ func main() {
 	fastdu.SortedKeys(nil)
 	sema = make(chan struct{}, *numOpenFiles)
 	fmt.Println("concurrency factor", cap(sema), *numOpenFiles)
-	dirCount := fastdu.NewDirCount()
+	dirCount := fastdu.NewDirCount(*excludePath)
 	fileCount := &fileCount{}
 
 	roots := flag.Args()
