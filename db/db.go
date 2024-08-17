@@ -35,8 +35,9 @@ CREATE TABLE IF NOT EXISTS media (
 	exif_json TEXT
 )
 `
-	insertMedia = `INSERT OR IGNORE INTO media 
- (name, size, datetime, exif_datetime_original, mime_type, mime_subtype, mime_value, extension, count, file_size_mismatch, suffix_common_path, max_common_path, filepath, exif_json) 
+	MediaDBCols      = "name, size, datetime, exif_datetime_original, mime_type, mime_subtype, mime_value, extension, count, file_size_mismatch, suffix_common_path, max_common_path, filepath, exif_json"
+	insertMediaTempl = `INSERT OR IGNORE INTO media 
+ (%s)
  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	duplicatesTable = `
@@ -50,6 +51,10 @@ CREATE TABLE IF NOT EXISTS duplicates (
 	insertDuplicate = `INSERT OR IGNORE INTO duplicates
 	(datetime, name, size, filepath)
 	VALUES (?, ?, ?, ?)`
+)
+
+var (
+	insertMedia = fmt.Sprintf(insertMediaTempl, MediaDBCols)
 )
 
 type DB interface {
@@ -74,10 +79,11 @@ func New() (DB, error) {
 	}
 
 	// ping database to verify connection
-	// create table
 	if err := db.Ping(); err != nil {
 		log.Fatal(err)
 	}
+
+	// create table
 	_, err = db.Exec(mediaTable)
 	if err != nil {
 		return nil, err
