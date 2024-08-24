@@ -195,6 +195,15 @@ func (d *DBImpl) WriteMeta(meta map[string]*fastdu.Meta) {
 			defer wg.Done()
 			for job := range jobs {
 				m := job.meta
+				// sort duplicates by max file size (descending size)
+				slices.SortFunc(m.Dups, func(a, b fastdu.Duplicate) int {
+					if a.Size == b.Size {
+						return 0
+					} else if a.Size < b.Size {
+						return -1
+					}
+					return 1
+				})
 				filepath, _ := json.Marshal(m.Dups)
 				count := len(m.Dups)
 
@@ -290,7 +299,7 @@ func findCommonPath(dups []fastdu.Duplicate) (string, string) {
 		// 	}
 		// }
 		i := 0
-		for i = 0; dMap[maxPath[i]] >= dMap[maxPath[i+1]]; i++ {
+		for i = 0; i+1 < len(maxPath) && dMap[maxPath[i]] >= dMap[maxPath[i+1]]; i++ {
 			// keep going as we are trying to find the last dip in count
 		}
 		i += 1 // end of inflection count

@@ -104,7 +104,7 @@ func (d *DirCount) Counters() string {
 
 func (c *Counters) String() string {
 	cntStr := "\n"
-	cntStr += fmt.Sprintf("Exif Errors: %d\nVideo files: %d\nAudio file(s): %d\nImage file(s): %d\nFileSizeMismatch Count: %d\nThumbFilesSkip Count:%d",
+	cntStr += fmt.Sprintf("Exif Errors: %d\nVideo files: %d\nAudio file(s): %d\nImage file(s): %d\nFileSizeMismatch Count: %d\nSkippedFiles:%d\n",
 		c.ExifErrors.Load(),
 		c.VideoCnt.Load(),
 		c.AudioCnt.Load(),

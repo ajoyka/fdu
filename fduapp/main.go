@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"syscall"
 	"time"
@@ -40,6 +41,9 @@ var (
 
 	printInterval = flag.Duration("f", 5*time.Second, "print summary at frequency specified in seconds; default disabled with value 0")
 	sema          chan struct{}
+	// skip thumb nail files etc.,; use raw strings to avoid backslashes - todo: remove duplicate code in interfaces .go
+	skipFiles      = `/Thumbs/|@eaDir|/rep/ssd/` // add other skip files after specifying '|' for 'OR'ing
+	skipFilesRegex = regexp.MustCompile(skipFiles)
 )
 
 func main() {
@@ -126,7 +130,6 @@ func createBackup(file string) {
 }
 
 func walkDir(dir string, dirCount *fastdu.DirCount, fileSizes chan<- int64) {
-	defer wg.Done()
 
 	// handle case when fastdu is invoked including files as args like so: fastdu *
 	// check if 'dir' is a file
@@ -142,10 +145,15 @@ func walkDir(dir string, dirCount *fastdu.DirCount, fileSizes chan<- int64) {
 	// 	return
 	// }
 
+	defer wg.Done()
 	for _, entry := range dirents(dir) {
 		if entry.IsDir() {
+			subDir := filepath.Join(dir, entry.Name())
+			if skipFilesRegex.MatchString(subDir) {
+				return
+			}
 			wg.Add(1)
-			go walkDir(filepath.Join(dir, entry.Name()), dirCount, fileSizes)
+			go walkDir(subDir, dirCount, fileSizes)
 		} else {
 			info, err := entry.Info()
 			if err != nil {
