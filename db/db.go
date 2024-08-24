@@ -200,9 +200,9 @@ func (d *DBImpl) WriteMeta(meta map[string]*fastdu.Meta) {
 					if a.Size == b.Size {
 						return 0
 					} else if a.Size < b.Size {
-						return -1
+						return 1 // for descending order
 					}
-					return 1
+					return -1
 				})
 				filepath, _ := json.Marshal(m.Dups)
 				count := len(m.Dups)
