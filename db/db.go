@@ -45,12 +45,13 @@ CREATE TABLE IF NOT EXISTS duplicates (
 	datetime DATETIME,
 	name TEXT,
 	size INTEGER,
+	mime_type TEXT,
 	filepath TEXT PRIMARY KEY 
 )`
 
 	insertDuplicate = `INSERT OR IGNORE INTO duplicates
-	(datetime, name, size, filepath)
-	VALUES (?, ?, ?, ?)`
+	(datetime, name, size, mime_type, filepath)
+	VALUES (?, ?, ?, ?, ?)`
 )
 
 var (
@@ -140,7 +141,7 @@ func (d *DBImpl) WriteDuplicates(meta map[string]*fastdu.Meta) {
 			for job := range jobs {
 				m := job.meta
 				for _, dup := range m.Dups {
-					result, err := stmt.Exec(m.Modtime, job.file, dup.Size, dup.Name)
+					result, err := stmt.Exec(m.Modtime, job.file, dup.Size, job.meta.MIME.Type, dup.Name)
 					if err != nil {
 						log.Fatalf("insert duplicate %v", err)
 					}
@@ -304,7 +305,7 @@ func findCommonPath(dups []fastdu.Duplicate) (string, string) {
 		}
 		i += 1 // end of inflection count
 
-		for ; dMap[maxPath[i]] != maxCompPath; i++ {
+		for ; i < len(maxPath) && dMap[maxPath[i]] != maxCompPath; i++ {
 			// find the next maxCompPath
 		}
 		for _, comp := range maxPath[i:] {

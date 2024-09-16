@@ -145,13 +145,15 @@ func walkDir(dir string, dirCount *fastdu.DirCount, fileSizes chan<- int64) {
 	// 	return
 	// }
 
+	// wg.Add must be done before calling walkDir as a goroutine
 	defer wg.Done()
+
+	if skipFilesRegex.MatchString(dir) {
+		return
+	}
 	for _, entry := range dirents(dir) {
 		if entry.IsDir() {
 			subDir := filepath.Join(dir, entry.Name())
-			if skipFilesRegex.MatchString(subDir) {
-				return
-			}
 			wg.Add(1)
 			go walkDir(subDir, dirCount, fileSizes)
 		} else {
