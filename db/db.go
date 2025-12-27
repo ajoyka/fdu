@@ -246,7 +246,12 @@ func (d *DBImpl) WriteMeta(meta map[string]*fastdu.Meta) {
 }
 
 func (d *DBImpl) Close() {
-	d.Close()
+	if d.media != nil {
+		d.media.Close()
+	}
+	if d.dups != nil {
+		d.dups.Close()
+	}
 }
 
 // findCommonPath finds the common path suffix from the bottom to the top
