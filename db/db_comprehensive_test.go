@@ -262,7 +262,7 @@ func Test_findCommonPath_SingleDuplicate(t *testing.T) {
 	dups := []fastdu.Duplicate{
 		{Name: "/path/to/file.jpg", Size: 100},
 	}
-	
+
 	suffix, common := findCommonPath(dups)
 	assert.Equal(t, "", suffix)
 	assert.Equal(t, "", common)
@@ -299,7 +299,7 @@ func TestDBImpl_WriteDuplicates_SkipExisting(t *testing.T) {
 
 	// Write once
 	db.WriteDuplicates(meta)
-	
+
 	// Write again - should skip
 	db.WriteDuplicates(meta)
 
@@ -322,7 +322,7 @@ func TestDBImpl_WriteMeta_WithExifDateTime(t *testing.T) {
 	defer db.Close()
 
 	now := time.Now()
-	
+
 	// Create exif with DateTimeOriginal
 	exif := exif2.Exif{}
 	// Note: Setting exif datetime would require proper exif construction

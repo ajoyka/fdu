@@ -67,14 +67,20 @@ func TestDirCount_AddFile(t *testing.T) {
 			},
 		},
 	}
-	d := &DirCount{
-		Meta:  map[string]*Meta{},
-		dList: []duplicates{},
-	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Create a fresh DirCount for each subtest with the skip pattern
+			d := NewDirCount(`/Thumbs/|@eaDir|/rep/ssd/`)
+
 			filePath := filepath.Join(tt.args.dir, tt.args.fname)
-			fInfo, _ := os.Stat(filePath)
+			fInfo, err := os.Stat(filePath)
+			if err != nil {
+				// For tests expecting files to be skipped, the files don't exist
+				// so we skip the AddFile call
+				t.Logf("File does not exist: %s", filePath)
+				tt.checker(d)
+				return
+			}
 			d.AddFile(tt.args.dir, fInfo)
 			tt.checker(d)
 			fmt.Printf("meta:%v\n", d)

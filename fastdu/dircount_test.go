@@ -12,7 +12,7 @@ import (
 
 func TestDirCount_Inc(t *testing.T) {
 	d := NewDirCount("")
-	
+
 	d.Inc("/home/user/dir1", 100)
 	d.Inc("/home/user/dir1", 200)
 	d.Inc("/home/user/dir2", 500)
@@ -23,14 +23,14 @@ func TestDirCount_Inc(t *testing.T) {
 
 func TestDirCount_GetTop(t *testing.T) {
 	d := NewDirCount("")
-	
+
 	d.size["home/user/pics"] = 1000
 	d.size["home/user/docs"] = 500
 	d.size["var/log"] = 2000
 	d.size["var/cache"] = 1500
 
 	top := d.GetTop()
-	
+
 	// Should aggregate by top-level directory (first path component)
 	assert.Contains(t, top, "home")
 	assert.Contains(t, top, "var")
@@ -40,7 +40,7 @@ func TestDirCount_GetTop(t *testing.T) {
 
 func TestDirCount_Counters(t *testing.T) {
 	d := NewDirCount("")
-	
+
 	// Reset counters for test
 	counts = Counters{}
 	counts.ImageCnt.Add(10)
@@ -61,11 +61,11 @@ func TestDirCount_Counters(t *testing.T) {
 
 func TestDirCount_AddFile_Duplicates(t *testing.T) {
 	d := NewDirCount("")
-	
+
 	// Note: AddFile requires actual files to work with getFileInfo
 	// This test demonstrates the structure but would need real test files
 	// to fully test the duplicate detection logic
-	
+
 	// Verify Meta map structure is correct
 	assert.NotNil(t, d.Meta)
 	assert.Equal(t, 0, len(d.Meta))
@@ -73,10 +73,10 @@ func TestDirCount_AddFile_Duplicates(t *testing.T) {
 
 func TestDirCount_AddFile_FileSizeMismatch(t *testing.T) {
 	d := NewDirCount("")
-	
+
 	// Reset counters
 	counts = Counters{}
-	
+
 	// Test structure - would need real files to fully test
 	assert.NotNil(t, d.Meta)
 	assert.Equal(t, int64(0), counts.FileSizeMismatchCnt.Load())
@@ -120,7 +120,7 @@ func TestCounters_String(t *testing.T) {
 	c.FilesSkipCnt.Add(8)
 
 	result := c.String()
-	
+
 	assert.Contains(t, result, "Exif Errors: 5")
 	assert.Contains(t, result, "Video files: 10")
 	assert.Contains(t, result, "Audio file(s): 3")
@@ -131,7 +131,7 @@ func TestCounters_String(t *testing.T) {
 
 func TestDirCount_WriteMeta(t *testing.T) {
 	d := NewDirCount("")
-	
+
 	// Add test metadata
 	d.Meta["test1.jpg"] = &Meta{
 		Name:    "test1.jpg",
@@ -143,7 +143,7 @@ func TestDirCount_WriteMeta(t *testing.T) {
 			{Name: "/another/path/test1.jpg", Size: 1000},
 		},
 	}
-	
+
 	d.Meta["test2.jpg"] = &Meta{
 		Name:    "test2.jpg",
 		Size:    2000,
@@ -156,7 +156,7 @@ func TestDirCount_WriteMeta(t *testing.T) {
 
 	// Create temp file for testing
 	tmpFile := filepath.Join(t.TempDir(), "test-meta.json")
-	
+
 	// Change to temp directory for the test
 	oldDir, _ := os.Getwd()
 	tmpDir := t.TempDir()
@@ -168,14 +168,14 @@ func TestDirCount_WriteMeta(t *testing.T) {
 	// Verify files were created
 	_, err := os.Stat(tmpFile)
 	assert.NoError(t, err)
-	
+
 	// Verify duplicates list was populated
 	assert.Equal(t, 1, len(d.dList)) // Only test1.jpg has multiple dups
 }
 
 func TestDirCount_WriteMetaSortedByDate(t *testing.T) {
 	d := NewDirCount("")
-	
+
 	now := time.Now()
 	d.Meta["old.jpg"] = &Meta{
 		Name:    "old.jpg",
@@ -198,7 +198,7 @@ func TestDirCount_WriteMetaSortedByDate(t *testing.T) {
 
 func TestDirCount_WriteMetaSortedBySize(t *testing.T) {
 	d := NewDirCount("")
-	
+
 	d.Meta["small.jpg"] = &Meta{
 		Name: "small.jpg",
 		Size: 100,
